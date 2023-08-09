@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 from django.http import HttpResponse, JsonResponse, FileResponse
 from django.core.files.storage import default_storage as store
 import firebase_admin
@@ -7,6 +8,7 @@ from firebase_admin import firestore
 from firebase_admin import credentials
 from .Crypt import Crypt
 import shutil
+import base64
 from django.views.decorators.csrf import csrf_exempt
 
 
@@ -28,7 +30,8 @@ APIkey ='9tVwVRQhXEZG8u4f3pJTPeFoleAskSSPvcF_kAqGv08ZGINTiFIkLZ6AOcKQumXoOUO6Zaz
 cred = credentials.Certificate(config) 
 app = firebase_admin.initialize_app(cred)
 db = firestore.client()
-
+enkey = b'L\x80\xc1D\x80\x93|\xfb0\xbf\xef\x9d\x98\xd3l\xd5'
+c = Crypt(enkey)
 
 def heartBeat(request):
     if request.method == 'GET':
@@ -79,7 +82,7 @@ def genDeviceConfig(request):
             sub = subData.to_dict()['subjects']
             d['subjects'] = sub
             data = json.dumps(d)
-            encrypted_data = Crypt(data).encrypt()
+            encrypted_data = c.encrypt(data)
             if os.path.exists(deviceID):
                 shutil.rmtree(deviceID)
             os.mkdir(deviceID)
@@ -91,20 +94,72 @@ def genDeviceConfig(request):
             return res
 
 
+# @csrf_exempt
+# def upload_file(request):
+#     if request.method == 'GET':
+#         deviceID = request.GET.get('deviceID')
+#         fileName = request.GET.get('filename')
+#         filContent = request.GET.get('content')
+#         url_safe_base64_data = filContent
+#         base64_data = url_safe_base64_data.replace('-', '+').replace('_', '/')
+#         original_bytes_data = base64.b64decode(base64_data)
+#         decrypted_data = c.decrypt(original_bytes_data)
+#         dt = json.loads(decrypted_data)
+#         records = dt['records']
+#         print(records)       
+#         return JsonResponse({'status': 200, 'message': 'Uploaded Successfully'})
+
+        
+#     return JsonResponse({'status': 404, 'message': 'Something went wrong'}) 
+
 @csrf_exempt
 def upload_file(request):
+    def updateRecord(id,files):
+        depdt = db.collection('devices').document(id).get()
+        depD = depdt.to_dict()
+        deparment = depD["Department"]
+        deparmentID = depD['departmentID']
+        print(os.getcwd)
+        for f in files:
+            with open(os.path.join(os.getcwd(), f"media\\{deviceID}\\records\\{f}"), 'rb') as rec:
+                dt = rec.read()
+                data = json.loads(c.decrypt(dt))
+                records = data['records']
+                for r in records:
+                    dateT = r['timestamp']
+                    punchDT = datetime(*dateT[:7])
+                    unix_time = int(punchDT.timestamp())
+                    datestr = punchDT.strftime("%m/%d/%Y")
+                    user = r['user']
+                    userdt = db.collection('students').document(user).get()
+                    userD = userdt.to_dict()
+                    uname = userD['name']
+                    PRN = userD['PRN']
+                    d = {
+                        'deparment' : deparment,
+                        'dep_id': deparmentID,
+                        'subject':r['sub'],
+                        'student_id':user,
+                        'PRN':PRN,
+                        'punch_time' : unix_time,
+                        'date' : datestr,
+                        'name' : uname,
+                    }
+                    db.collection('records').add(d)
     if request.method == 'POST':
         deviceID = request.POST.get('deviceID')
-        uploaded_file = request.FILES.getlist('file')
-        if uploaded_file:
-            print(uploaded_file)
-            print(deviceID)
-            for f in uploaded_file:
-                store.save(f'{deviceID}/{f.name}',f)
-            file = os.path.join(os.curdir,f'media/{deviceID}/{f.name}')
-            with open(file, 'rb') as cfg:
-                data = Crypt(cfg.read()).decrypt()
-                print(json.loads(data))
-            return JsonResponse({'status': 200, 'message': 'File successfully uploaded'})      
+        file =  request.FILES
+        fileList = []
+        for uploaded_files_list in file.items():
+            for f in uploaded_files_list:
+                print(f)
+                if not isinstance(f, str):
+                    print(f.name)
+                    fileList.append(f.name)
+                    store.save(f'{deviceID}/records/{f.name}',f)
+        
+        updateRecord(deviceID,fileList)
+        return JsonResponse({'status': 200, 'message': 'Uploaded Successfully'})
+
         
     return JsonResponse({'status': 404, 'message': 'Something went wrong'}) 
