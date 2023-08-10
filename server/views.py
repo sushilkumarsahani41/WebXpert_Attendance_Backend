@@ -112,30 +112,30 @@ def genDeviceConfig(request):
         
 #     return JsonResponse({'status': 404, 'message': 'Something went wrong'}) 
 
-@csrf_exempt
-def upload_file(request):
-    def updateRecord(id,files):
-        depdt = db.collection('devices').document(id).get()
-        depD = depdt.to_dict()
-        deparment = depD["Department"]
-        deparmentID = depD['departmentID']
-        print(os.getcwd)
-        for f in files:
-            with open(os.path.join(os.getcwd(), f"media\\{deviceID}\\records\\{f}"), 'rb') as rec:
-                dt = rec.read()
-                data = json.loads(c.decrypt(dt))
-                records = data['records']
-                for r in records:
-                    dateT = r['timestamp']
-                    punchDT = datetime(*dateT[:7])
-                    unix_time = int(punchDT.timestamp())
-                    datestr = punchDT.strftime("%m/%d/%Y")
-                    user = r['user']
-                    userdt = db.collection('students').document(user).get()
-                    userD = userdt.to_dict()
-                    uname = userD['name']
-                    PRN = userD['PRN']
-                    d = {
+
+def updateRecord(id,files):
+    depdt = db.collection('devices').document(id).get()
+    depD = depdt.to_dict()
+    deparment = depD["Department"]
+    deparmentID = depD['departmentID']
+    print(os.getcwd)
+    for f in files:
+        print(os.path.join(os.getcwd(), f"media\\{id}\\records\\{f}"))
+        with open(os.path.join(os.getcwd(), f"media\\{id}\\records\\{f}"), 'rb') as rec:
+            dt = rec.read()
+            data = json.loads(c.decrypt(dt))
+            records = data['records']
+            for r in records:
+                dateT = r['timestamp']
+                punchDT = datetime(*dateT[:7])
+                unix_time = int(punchDT.timestamp())
+                datestr = punchDT.strftime("%m/%d/%Y")
+                user = r['user']
+                userdt = db.collection('students').document(user).get()
+                userD = userdt.to_dict()
+                uname = userD['name']
+                PRN = userD['PRN']
+                d = {
                         'deparment' : deparment,
                         'dep_id': deparmentID,
                         'subject':r['sub'],
@@ -144,17 +144,19 @@ def upload_file(request):
                         'punch_time' : unix_time,
                         'date' : datestr,
                         'name' : uname,
-                    }
-                    db.collection('records').add(d)
+                }
+                db.collection('records').add(d)
+        os.remove(os.path.join(os.getcwd(), f"media\\{id}\\records\\{f}"))
+
+@csrf_exempt
+def upload_file(request):
     if request.method == 'POST':
         deviceID = request.POST.get('deviceID')
         file =  request.FILES
         fileList = []
         for uploaded_files_list in file.items():
             for f in uploaded_files_list:
-                print(f)
                 if not isinstance(f, str):
-                    print(f.name)
                     fileList.append(f.name)
                     store.save(f'{deviceID}/records/{f.name}',f)
         
