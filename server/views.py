@@ -4,13 +4,14 @@ from datetime import datetime
 from django.http import HttpResponse, JsonResponse, FileResponse
 from django.core.files.storage import default_storage as store
 import firebase_admin
+from datetime import datetime, timedelta
 from firebase_admin import firestore
 from firebase_admin import credentials
-from .Crypt import Crypt
+from Crypt import Crypt
 import shutil
 import base64
 from django.views.decorators.csrf import csrf_exempt
-
+import pandas as pd
 
 
 config = {
@@ -94,25 +95,6 @@ def genDeviceConfig(request):
             return res
 
 
-# @csrf_exempt
-# def upload_file(request):
-#     if request.method == 'GET':
-#         deviceID = request.GET.get('deviceID')
-#         fileName = request.GET.get('filename')
-#         filContent = request.GET.get('content')
-#         url_safe_base64_data = filContent
-#         base64_data = url_safe_base64_data.replace('-', '+').replace('_', '/')
-#         original_bytes_data = base64.b64decode(base64_data)
-#         decrypted_data = c.decrypt(original_bytes_data)
-#         dt = json.loads(decrypted_data)
-#         records = dt['records']
-#         print(records)       
-#         return JsonResponse({'status': 200, 'message': 'Uploaded Successfully'})
-
-        
-#     return JsonResponse({'status': 404, 'message': 'Something went wrong'}) 
-
-
 def updateRecord(id,files):
     depdt = db.collection('devices').document(id).get()
     depD = depdt.to_dict()
@@ -120,8 +102,8 @@ def updateRecord(id,files):
     deparmentID = depD['departmentID']
     print(os.getcwd)
     for f in files:
-        print(os.path.join(os.getcwd(), f"media\\{id}\\records\\{f}"))
-        with open(os.path.join(os.getcwd(), f"media\\{id}\\records\\{f}"), 'rb') as rec:
+        print(os.path.join(os.getcwd(), f"media/{id}/records/{f}"))
+        with open(os.path.join(os.getcwd(), f"media/{id}/records/{f}"), 'rb') as rec:
             dt = rec.read()
             data = json.loads(c.decrypt(dt))
             records = data['records']
@@ -129,7 +111,7 @@ def updateRecord(id,files):
                 dateT = r['timestamp']
                 punchDT = datetime(*dateT[:7])
                 unix_time = int(punchDT.timestamp())
-                datestr = punchDT.strftime("%m/%d/%Y")
+                datestr = punchDT.strftime("%m%d%Y")
                 user = r['user']
                 userdt = db.collection('students').document(user).get()
                 userD = userdt.to_dict()
@@ -165,3 +147,63 @@ def upload_file(request):
 
         
     return JsonResponse({'status': 404, 'message': 'Something went wrong'}) 
+
+
+def dateList(fromDate, toDate):
+    from_date_str = fromDate
+    to_date_str = toDate
+
+    # Parse input strings into datetime objects
+    from_date = datetime.strptime(from_date_str, '%m-%d-%Y')
+    to_date = datetime.strptime(to_date_str, '%m-%d-%Y')
+
+    # Calculate the number of days between the dates
+    date_range = to_date - from_date
+
+    # Create a list of dates in string format MM/DD/YYYY
+    date_list = [(from_date + timedelta(days=i)).strftime('%m/%d/%Y') for i in range(date_range.days + 1)]
+
+    return date_list
+
+def genRecordCSV(request):
+    if request.method == 'GET':
+        key = request.GET.get('key') 
+        depid = request.GET.get('depid')
+        sub = request.GET.get('sub')
+        fromDate = request.GET.get('fromDate')
+        toDate = request.GET.get('toDate')
+        if key == APIkey:
+            records = {}
+            dates = dateList(fromDate,toDate)
+            studentDT = db.collection('students').where("DepartmentID", "==", depid).stream()
+            for s in studentDT:
+                records[s.id] = {'name' : s.to_dict()['name'], 'PRN' : s.to_dict()['PRN'], 'rec':[]}
+            for date in dates:
+                presentList = []
+                rec = db.collection('records').where('date',"==",date).where("dep_id", "==", depid).where('subject','==',sub).stream()
+                for r in rec:
+                    presentList.append(r.to_dict()['student_id'])
+                
+                studentDT = db.collection('students').where("DepartmentID", "==", depid).stream()
+                for s in studentDT:
+                    if s.id in presentList:
+                        records[s.id]['rec'].append(1)
+                    else:
+                        records[s.id]['rec'].append(0)
+            
+            array = []
+            for r in records:
+                dt = [records[r]['PRN'], records[r]['name']]
+                rec = records[r]['rec']
+                a = dt + rec
+                array.append(a)
+            
+            columns = ['PRN', 'Name']  + dates
+            filename = f'{sub}-{fromDate}-{toDate}.csv'
+            csv_filename = os.path.join(os.getcwd(), f"media/records/{sub}-{fromDate}-{toDate}.csv")
+
+            df = pd.DataFrame(array, columns=columns)
+            df.to_csv(csv_filename, index=False)
+            res = FileResponse(open(csv_filename, 'rb'))
+            res['Content-Disposition'] = f'attachment; filename={filename}'
+            return res

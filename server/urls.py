@@ -25,5 +25,6 @@ urlpatterns = [
     path('device/updateEnrollment', views.updateEnrollment),
     path('device/genDeviceConfig', views.genDeviceConfig),
     path('upload', views.upload_file, name='upload_file'),
+    path('getRecords', views.genRecordCSV)
     
 ]
