@@ -31,7 +31,7 @@ APIkey ='9tVwVRQhXEZG8u4f3pJTPeFoleAskSSPvcF_kAqGv08ZGINTiFIkLZ6AOcKQumXoOUO6Zaz
 cred = credentials.Certificate(config) 
 app = firebase_admin.initialize_app(cred)
 db = firestore.client()
-enkey = b'L\x80\xc1D\x80\x93|\xfb0\xbf\xef\x9d\x98\xd3l\xd5'
+enkey = b'\xc5lW\xdefK\xf5\xd1\x9e\xfb\xba\x8c\xcb\xd3\xbaO'
 c = Crypt(enkey)
 
 def heartBeat(request):
@@ -111,7 +111,7 @@ def updateRecord(id,files):
                 dateT = r['timestamp']
                 punchDT = datetime(*dateT[:7])
                 unix_time = int(punchDT.timestamp())
-                datestr = punchDT.strftime("%m%d%Y")
+                datestr = punchDT.strftime("%m/%d/%Y")
                 user = r['user']
                 userdt = db.collection('students').document(user).get()
                 userD = userdt.to_dict()
@@ -127,8 +127,9 @@ def updateRecord(id,files):
                         'date' : datestr,
                         'name' : uname,
                 }
+                print(d)
                 db.collection('records').add(d)
-        os.remove(os.path.join(os.getcwd(), f"media\\{id}\\records\\{f}"))
+        os.remove(os.path.join(os.getcwd(), f"media/{id}/records/{f}"))
 
 @csrf_exempt
 def upload_file(request):
@@ -139,8 +140,8 @@ def upload_file(request):
         for uploaded_files_list in file.items():
             for f in uploaded_files_list:
                 if not isinstance(f, str):
-                    fileList.append(f.name)
-                    store.save(f'{deviceID}/records/{f.name}',f)
+                    fileList.append(f.name.replace(" ","-"))
+                    store.save(f'{deviceID}/records/{f.name.replace(" ","-")}',f)
         
         updateRecord(deviceID,fileList)
         return JsonResponse({'status': 200, 'message': 'Uploaded Successfully'})
